@@ -1,19 +1,17 @@
 # Base44 Dev Environment
 
-## Project Overview
+## Architecture
 
-Spring Boot 4.0.6 backend (Java 21) — REST API with JPA/PostgreSQL, Spring Security
-(JWT, stateless), springdoc OpenAPI/Swagger UI. No separate frontend; the `frontend/`
-directory is empty. The app serves APIs and Swagger UI directly.
+Three compose services (`docker-compose.base44.yml`):
 
-## Stack
+| Service | What it is | Port |
+| --- | --- | --- |
+| `web` | React 18 + Vite 6 SPA (`frontend/`) | 5173 → **host 3000** (preview entry point) |
+| `app` | Spring Boot 4 / Java 21 REST API (`src/`) | 8080 (internal only) |
+| `db` | PostgreSQL 17 (`seconddb`, user `second`) | internal |
 
-- **Language:** Java 21 (Eclipse Temurin JDK 21)
-- **Framework:** Spring Boot 4.0.6 (Gradle 9.5.1 wrapper)
-- **Database:** PostgreSQL (local compose service, db `seconddb`, user `second`)
-- **Auth:** JWT with in-memory signing key (`Keys.secretKeyFor`) — no secret env var needed
-- **Live reload:** `./gradlew bootRun` (Spring devtools; restart container for code changes —
-  Gradle continuous mode (`-t`) does not detect bind-mount file changes in Docker)
+The browser only ever talks to `web`. Vite proxies `/api/**` and `/uploads/**` to
+`http://app:8080`, so the SPA is single-origin and no CORS is involved at runtime.
 
 ## Running
 
@@ -21,35 +19,65 @@ directory is empty. The app serves APIs and Swagger UI directly.
 docker compose -f docker-compose.base44.yml up -d --build
 ```
 
-The app listens on port **8080** inside the container, mapped to host **3000** for the
-preview. First boot downloads Gradle + all Spring Boot dependencies (~5 min); subsequent
-restarts are fast (deps cached in the `gradle-cache` volume).
+First boot downloads Gradle + Spring dependencies and runs `npm install` (~5 min);
+both are cached in named volumes (`gradle-cache`, `web_node_modules`).
+
+## Frontend (`frontend/`)
+
+- Vite + React Router. Public routes: `/`, `/posts`, `/posts/:slug`, `/products`,
+  `/products/:slug`, `/p/:slug` (CMS pages), `/login`, `/signup`.
+- Admin routes: `/admin` (dashboard), `/admin/posts`, `/admin/pages`,
+  `/admin/products`, `/admin/media`, `/admin/menus` — all behind `ProtectedRoute adminOnly`.
+- Dark/light mode + accent themes are CSS-variable driven (`ThemeContext`,
+  `data-theme` / `data-accent` on `<html>`, persisted in `localStorage`).
+- Scroll animations use an `IntersectionObserver` (`components/Reveal.jsx`).
+- Live reload: Vite HMR. Editing `vite.config.js` makes Vite restart itself.
+
+### Proxy note (important)
+
+`vite.config.js` strips the `Origin` header on proxied requests. Browsers attach
+`Origin` to same-origin POSTs; forwarding it made Spring treat the proxied call as
+cross-origin and reject it with **403**. Removing it keeps the API's CORS policy
+strict while the proxy stays a same-origin gateway.
+
+## Backend (`src/main/java/ir/linuxian/second`)
+
+- Entities: `Post`, `Product`, `Media`, `Page`, `Menu`, `MenuItem`, `User`, `Role`.
+- Auth: `POST /api/auth/login`, `POST /api/auth/signup`, `GET /api/auth/me`
+  (Bearer JWT). `config/JwtAuthFilter` validates the token and grants
+  `ROLE_<user.role>`; admin writes are gated with `hasRole("admin")`.
+- Public reads: `GET /api/posts`, `/api/products`, `/api/pages`, `/api/menus`,
+  `/api/media`, `/uploads/**`. `GET /api/posts/all` (includes drafts) is admin-only.
+- Media: `POST /api/media/upload` (multipart) writes to `uploads/` at the repo root
+  (gitignored, bind-mounted) and serves it at `/uploads/**` via `config/WebConfig`.
+- Seeded admin account: **mohammad / linuxian**. Seeding is now idempotent (only
+  runs on an empty database), which fixes the duplicate-user login bug.
 
 ## Verifying
 
-- Health endpoint: `GET /api/hello` → `hello from TestController`
-- Swagger UI: `/swagger-ui.html`
-- API docs: `/api-docs`
-- Root `/` returns a whitelabel 404 (no controller maps it) — this is expected.
+```bash
+curl localhost:3000/api/hello                     # -> hello from TestController
+curl -X POST localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"mohammad","password":"linuxian"}'   # -> { token, role: "admin" }
+curl localhost:3000/api/posts
+```
 
-## Database
+Swagger UI (`/swagger-ui.html`) and `/api-docs` are only reachable on the API
+service directly (`docker compose exec app curl localhost:8080/...`), not through
+the Vite proxy.
 
-Hibernate `ddl-auto=update` creates tables automatically on startup. The
-`CommandLineRunner` in `SecondApplication` seeds roles and users on every start
-(duplicates accumulate on restart — pre-existing app behavior, not a setup issue).
+## Notes / gotchas
 
-## No External Secrets
+- **Restart the API after Java changes:** `docker compose restart app`. Gradle
+  continuous mode (`-t`) does not detect bind-mount file changes in Docker.
+- JWTs are signed with an in-memory key, so every backend restart invalidates
+  existing tokens (users must log in again). Pre-existing behavior.
+- `uploads/` is runtime data — never commit it, never delete it to "reset" deps.
+- Product "Add to cart" is a UI placeholder; there is no commerce backend yet.
+- Hibernate `ddl-auto=update` creates new tables on startup automatically.
 
-The app requires no external credentials. PostgreSQL credentials are inline in
-`docker-compose.base44.yml`. JWT keys are generated in-memory at startup.
+## No external secrets
 
-## Known Issues
-
-- **Duplicate seed data on restart:** `SecondApplication`'s `CommandLineRunner` inserts
-  users and roles on every startup without checking for existing records. Restarting the
-  app creates duplicates, which breaks `findByUsername` (`NonUniqueResultException`) and
-  login. To recover: `docker compose down`, `docker volume rm app_pgdata`, then `up -d`.
-  This is a pre-existing app bug, not a setup issue.
-- **Preview landing page:** A static `index.html` was added at `src/main/resources/static/`
-  and `GET /`, `/index.html`, `/favicon.ico`, `/swagger-ui/**`, `/api-docs/**` were added to
-  the `SecurityConfig` permitAll list so the app is viewable in the preview iframe.
+The app needs no third-party credentials. PostgreSQL credentials are inline in the
+compose file and the JWT key is generated in memory at startup.

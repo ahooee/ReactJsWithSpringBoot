@@ -39,39 +39,24 @@ public class SecondApplication implements CommandLineRunner {
 	@Override
 	public void run(String... args) throws Exception {
 
-Role admin = new Role(RoleName.ROLE_ADMIN);
-Role user = new Role(RoleName.ROLE_USER);
-Role moderator = new Role(RoleName.ROLE_MODERATOR);
-
-List<Role> roles = new ArrayList<>();
-roles.add(admin);
-roles.add(moderator);
-
-roleRepo.save(admin);
-roleRepo.save(user);
-roleRepo.save(moderator);
-
-		userRepo.save(new User("mohammad", new BCryptPasswordEncoder().encode("linuxian"),"admin",List.of(user)));
-		userRepo.save(new User("ahmad", new BCryptPasswordEncoder().encode("linuxian0"),"user",List.of(admin)));
-		userRepo.save(new User("hamed", new BCryptPasswordEncoder().encode("linuxian1"),"admin",List.of(moderator)));
-	userRepo.save(new User("hamid", new BCryptPasswordEncoder().encode("linuxian2"),"guest",roles));
-	roles.add(user);
-		userRepo.save(new User("fahimeh", "linuxian2","user",roles));
-		userRepo.save(new User("masoomed","ldskjflkdsjf","user",List.of(admin)));
-
-
-
-
-		for(User u : userRepo.findAll()) {
-
-			logger.info("username: {}, password: {}, roles: {}",u.getUsername(), u.getPassword(),u.getRoles());
+		// Idempotent seeding: only create the defaults on an empty database so
+		// restarting the app does not duplicate users (which breaks login).
+		if (roleRepo.count() == 0) {
+			roleRepo.save(new Role(RoleName.ROLE_ADMIN));
+			roleRepo.save(new Role(RoleName.ROLE_USER));
+			roleRepo.save(new Role(RoleName.ROLE_MODERATOR));
 		}
 
-		roleRepo.findAllWithUsers().forEach(role -> {
+		if (userRepo.count() == 0) {
+			BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+			userRepo.save(new User("mohammad", encoder.encode("linuxian"), "admin", new ArrayList<>()));
+			userRepo.save(new User("ahmad", encoder.encode("linuxian0"), "user", new ArrayList<>()));
+			userRepo.save(new User("hamed", encoder.encode("linuxian1"), "admin", new ArrayList<>()));
+			logger.info("Seeded default users. Admin login: mohammad / linuxian");
+		}
 
-			          logger.info("roleName: {},users: {}",role.toString(),role.getUsers());
-		});
-
-
+		for (User u : userRepo.findAll()) {
+			logger.info("username: {}, role: {}", u.getUsername(), u.getRole());
+		}
 	}
 }

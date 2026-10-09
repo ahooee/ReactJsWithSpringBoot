@@ -5,12 +5,10 @@ import ir.linuxian.second.entities.page.Page;
 import ir.linuxian.second.service.PageService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -21,6 +19,27 @@ public class PageController {
 
     public PageController(PageService pageService) {
         this.pageService = pageService;
+    }
+
+    @GetMapping
+    public List<Page> getAllPages() {
+        return pageService.findAll();
+    }
+
+    @PostMapping
+    public Page createPage(@RequestBody Page page) {
+        return pageService.create(page);
+    }
+
+    @PutMapping("/{id}")
+    public Page updatePage(@PathVariable Long id, @RequestBody Page page) {
+        return pageService.update(id, page);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deletePage(@PathVariable Long id) {
+        pageService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{*slug}")
