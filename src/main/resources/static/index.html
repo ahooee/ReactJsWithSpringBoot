@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Second App — Spring Boot API</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 720px;
+            margin: 3rem auto;
+            padding: 0 1.5rem;
+            color: #1a1a2e;
+            line-height: 1.6;
+        }
+        h1 { margin-bottom: 0.25rem; }
+        .subtitle { color: #6b7280; margin-top: 0; }
+        .status {
+            display: inline-block;
+            background: #d1fae5;
+            color: #065f46;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+        }
+        a {
+            display: inline-block;
+            padding: 0.6rem 1.2rem;
+            background: #2563eb;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+        a:hover { background: #1d4ed8; }
+        a.secondary { background: #4b5563; }
+        a.secondary:hover { background: #374151; }
+        .endpoints {
+            margin-top: 2rem;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1rem 1.5rem;
+        }
+        .endpoints h2 { font-size: 1rem; margin-bottom: 0.5rem; }
+        .endpoints code { color: #2563eb; }
+        .endpoints li { margin-bottom: 0.3rem; }
+    </style>
+</head>
+<body>
+    <span class="status">● Running</span>
+    <h1>Second App</h1>
+    <p class="subtitle">Spring Boot 4 REST API — ir.linuxian.second</p>
+
+    <div class="links">
+        <a href="/swagger-ui.html">Swagger UI</a>
+        <a href="/api/hello" class="secondary">GET /api/hello</a>
+        <a href="/api/menus" class="secondary">GET /api/menus</a>
+    </div>
+
+    <div class="endpoints">
+        <h2>Public API Endpoints</h2>
+        <ul>
+            <li><code>GET /api/hello</code> — health check</li>
+            <li><code>GET /api/menus</code> — list all menus</li>
+            <li><code>GET /api/menus/{id}</code> — get menu by ID</li>
+            <li><code>GET /api/menus/slug/{slug}</code> — get menu by slug</li>
+            <li><code>GET /api/pages/{slug}</code> — get page by slug</li>
+            <li><code>POST /login</code> — authenticate (returns JWT)</li>
+        </ul>
+    </div>
+</body>
+</html>

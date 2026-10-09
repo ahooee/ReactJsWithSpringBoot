@@ -90,6 +90,13 @@ public SecurityConfig(UserDetailsService userDetailsService) {
 
                                 .requestMatchers(HttpMethod.DELETE, "/api/menus/**")
                                 .permitAll()
+                                .requestMatchers(HttpMethod.GET, "/").permitAll()
+                                .requestMatchers(HttpMethod.GET, "/index.html").permitAll()
+                                .requestMatchers(HttpMethod.GET, "/favicon.ico").permitAll()
+                                .requestMatchers("/swagger-ui.html").permitAll()
+                                .requestMatchers("/swagger-ui/**").permitAll()
+                                .requestMatchers("/api-docs").permitAll()
+                                .requestMatchers("/api-docs/**").permitAll()
                                 .requestMatchers("/error").permitAll()
                                 .anyRequest()
                                 .authenticated()

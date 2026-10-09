@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: seconddb
+      POSTGRES_USER: second
+      POSTGRES_PASSWORD: lin00x206M
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U second -d seconddb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: on-failure
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.base44
+    volumes:
+      - .:/app
+      - gradle-cache:/root/.gradle
+    ports:
+      - "3000:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/seconddb
+      SPRING_DATASOURCE_USERNAME: second
+      SPRING_DATASOURCE_PASSWORD: lin00x206M
+      BASE44_PREVIEW_MODE: "1"
+    command: ["sh", "-ec", "./gradlew bootRun"]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/api/hello || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 300s
+    restart: on-failure
+
+volumes:
+  pgdata:
+  gradle-cache:
