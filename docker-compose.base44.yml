@@ -54,7 +54,7 @@ services:
     command: ["sh", "-ec", "npm install --no-audit --no-fund && exec npm run dev"]
     depends_on:
       app:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:5173/ || exit 1"]
       interval: 15s
