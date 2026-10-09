@@ -1,0 +1,13 @@
+package ir.linuxian.second.repos;
+
+import ir.linuxian.second.entities.menu.Menu;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface MenuRepo extends JpaRepository<Menu, Long> {
+
+    Optional<Menu> findBySlug(String slug);
+
+    Menu getMenuById(Long id);
+}
