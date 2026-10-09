@@ -31,6 +31,9 @@ both are cached in named volumes (`gradle-cache`, `web_node_modules`).
 - Dark/light mode + accent themes are CSS-variable driven (`ThemeContext`,
   `data-theme` / `data-accent` on `<html>`, persisted in `localStorage`).
 - Scroll animations use an `IntersectionObserver` (`components/Reveal.jsx`).
+- Header nav supports dropdowns: nested menu items (an item with children) render as
+  a toggle button with a caret instead of a link; opens on click or hover, closes on
+  outside click or route change.
 - Live reload: Vite HMR. Editing `vite.config.js` makes Vite restart itself.
 
 ### Proxy note (important)
