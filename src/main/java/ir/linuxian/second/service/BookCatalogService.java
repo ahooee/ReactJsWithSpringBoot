@@ -1,6 +1,7 @@
 package ir.linuxian.second.service;
 
 import ir.linuxian.second.dto.BookCategoryView;
+import ir.linuxian.second.dto.BookLanguageView;
 import ir.linuxian.second.dto.BookReelsView;
 import ir.linuxian.second.dto.BookView;
 import ir.linuxian.second.entities.book.Book;
@@ -23,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -159,6 +161,52 @@ public class BookCatalogService {
             out.add(new BookCategoryView(slug, name, nameBySlug.get(slug), count));
         });
         return out;
+    }
+
+    /**
+     * Language chips derived from the downloaded books' {@code language}
+     * column. The source data is messy ("english"/"English" mixed case,
+     * blanks, ISO codes), so it is grouped case-insensitively and
+     * normalized: blank/null/unknown/ISO {@code zxx} → "Unknown". Sorted by
+     * count descending. Adding a book with a new language value makes the
+     * chip appear automatically.
+     */
+    @Transactional(readOnly = true)
+    public List<BookLanguageView> findLanguages() {
+        Map<String, Long> byKey = new HashMap<>();
+        for (Book book : bookRepo.findByDownloadedTrueOrderByTitleAsc()) {
+            String key = languageKey(book.getLanguage());
+            byKey.merge(key, 1L, Long::sum);
+        }
+        return byKey.entrySet().stream()
+                .map(e -> new BookLanguageView(languageDisplayName(e.getKey()), e.getValue()))
+                .sorted(Comparator.comparingLong(BookLanguageView::count).reversed()
+                        .thenComparing((BookLanguageView::language), String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    /** Normalized lowercase grouping key for a language raw value. */
+    private static String languageKey(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "unknown";
+        }
+        String key = raw.trim().toLowerCase(Locale.ROOT);
+        // ISO 639-2 code meaning "no linguistic content" → Unknown
+        return key.equals("zxx") ? "unknown" : key;
+    }
+
+    /** Display name for a normalized language key (title-cased words). */
+    private static String languageDisplayName(String key) {
+        if (key.equals("unknown")) {
+            return "Unknown";
+        }
+        StringBuilder sb = new StringBuilder(key.length());
+        boolean upper = true;
+        for (char ch : key.toCharArray()) {
+            sb.append(upper ? Character.toUpperCase(ch) : ch);
+            upper = ch == ' ';
+        }
+        return sb.toString();
     }
 
     /** First non-blank cover value, so an HTTP cover wins over a local path. */

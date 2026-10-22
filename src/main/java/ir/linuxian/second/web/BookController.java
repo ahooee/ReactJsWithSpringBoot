@@ -1,6 +1,7 @@
 package ir.linuxian.second.web;
 
 import ir.linuxian.second.dto.BookCategoryView;
+import ir.linuxian.second.dto.BookLanguageView;
 import ir.linuxian.second.dto.BookReelsView;
 import ir.linuxian.second.dto.BookView;
 import ir.linuxian.second.entities.book.Book;
@@ -62,6 +63,12 @@ public class BookController {
     @GetMapping("/reels")
     public BookReelsView reels() {
         return service.findReels();
+    }
+
+    /** Languages auto-discovered from the books table (with counts). */
+    @GetMapping("/languages")
+    public List<BookLanguageView> languages() {
+        return service.findLanguages();
     }
 
     /** One downloaded book by id. */
