@@ -23,6 +23,12 @@ public record BookView(
         String isbn,
         Integer pages,
         String filesize,
+        /**
+         * Effective shop price in rials (linked product, or the configured
+         * default for catalog books). Falls back to the configured default
+         * before the product exists. Only guaranteed on the detail endpoint.
+         */
+        Long price,
         /** Kept for the storefront card/filter code; all table books are e-books. */
         String bookType
 ) {

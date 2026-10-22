@@ -29,7 +29,7 @@ public class ProductService {
     }
 
     public List<Product> findActive() {
-        return productRepo.findByActiveTrueOrderByCreatedAtDesc();
+        return productRepo.findByActiveTrueAndBookIdIsNullOrderByCreatedAtDesc();
     }
 
     public List<Product> findAll() {

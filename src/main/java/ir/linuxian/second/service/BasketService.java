@@ -183,6 +183,7 @@ public class BasketService {
             Map<String, Object> line = new LinkedHashMap<>();
             line.put("id", item.getId());
             line.put("productId", p.getId());
+            line.put("bookId", p.getBookId() == null ? null : p.getBookId().toString());
             line.put("slug", p.getSlug());
             line.put("name", p.getName());
             line.put("price", ProductService.effectivePrice(p));

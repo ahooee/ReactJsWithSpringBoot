@@ -6,6 +6,7 @@ import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "products")
@@ -56,7 +57,6 @@ public class Product {
     // Bookstore fields (all optional)
     @Getter @Setter
     private String author;
-
     @Getter @Setter
     private String translator;
 
@@ -93,6 +93,15 @@ public class Product {
     /** PDF or PAPER. PDF books need no shipping address at checkout. */
     @Getter @Setter
     private String bookType = "PDF";
+
+    /**
+     * Set when the product was auto-created from a library book
+     * ({@code books} table entry). Used for deduplication and to keep these
+     * auto rows out of the public shop listing.
+     */
+    @Getter @Setter
+    @Column(name = "book_id")
+    private UUID bookId;
 
     @Getter @Setter
     @Column(nullable = false)

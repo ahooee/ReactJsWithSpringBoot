@@ -4,6 +4,7 @@ import ir.linuxian.second.entities.settings.SiteSetting;
 import ir.linuxian.second.repos.SiteSettingRepo;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -15,6 +16,21 @@ public class SettingService {
 
     public SettingService(SiteSettingRepo repo) {
         this.repo = repo;
+    }
+
+    /**
+     * Price (in rials) applied when a library book is turned into its shop
+     * product for the first time. Configurable from Admin → Settings → Shop
+     * (key {@code library.ebookPrice}).
+     */
+    public BigDecimal libraryEbookPrice() {
+        String raw = repo.findById("library.ebookPrice").map(SiteSetting::getValue).orElse(null);
+        try {
+            long value = Long.parseLong(raw == null || raw.isBlank() ? "500000" : raw.trim());
+            return BigDecimal.valueOf(Math.max(0, value));
+        } catch (NumberFormatException e) {
+            return BigDecimal.valueOf(500000);
+        }
     }
 
     public Map<String, String> getAllAsMap() {

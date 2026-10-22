@@ -61,6 +61,8 @@ public class SecurityConfig {
                                 .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/books/**").permitAll()
                                 .requestMatchers(HttpMethod.HEAD, "/api/books/**").permitAll()
+                                // Buy a library book: turns it into a product and adds it to the basket
+                                .requestMatchers(HttpMethod.POST, "/api/books/*/purchase").permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/categories/**").permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/menus/**").permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/settings").permitAll()

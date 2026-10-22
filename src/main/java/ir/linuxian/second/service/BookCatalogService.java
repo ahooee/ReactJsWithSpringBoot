@@ -3,7 +3,9 @@ package ir.linuxian.second.service;
 import ir.linuxian.second.dto.BookCategoryView;
 import ir.linuxian.second.dto.BookView;
 import ir.linuxian.second.entities.book.Book;
+import ir.linuxian.second.entities.product.Product;
 import ir.linuxian.second.repos.BookRepo;
+import ir.linuxian.second.repos.ProductRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,11 +41,16 @@ public class BookCatalogService {
     private static final Pattern YEAR = Pattern.compile("\\b(1[5-9]\\d{2}|20\\d{2})\\b");
 
     private final BookRepo bookRepo;
+    private final ProductRepo productRepo;
+    private final SettingService settingService;
     private final Path libraryRoot;
 
-    public BookCatalogService(BookRepo bookRepo,
+    public BookCatalogService(BookRepo bookRepo, ProductRepo productRepo,
+                              SettingService settingService,
                               @Value("${app.books.library-root:../zlibrary/zlibrary/downloads}") String libraryRoot) {
         this.bookRepo = bookRepo;
+        this.productRepo = productRepo;
+        this.settingService = settingService;
         this.libraryRoot = Paths.get(libraryRoot).toAbsolutePath().normalize();
         if (!Files.isDirectory(this.libraryRoot)) {
             log.warn("Books library root does not exist: {} (set app.books.library-root or BOOKS_LIBRARY_ROOT)",
@@ -55,13 +62,13 @@ public class BookCatalogService {
     @Transactional(readOnly = true)
     public List<BookView> findDownloaded() {
         return bookRepo.findByDownloadedTrueOrderByTitleAsc().stream()
-                .map(this::toView)
+                .map(book -> toView(book, false))
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public Optional<BookView> findDownloaded(UUID id) {
-        return findDownloadedBook(id).map(this::toView);
+        return findDownloadedBook(id).map(book -> toView(book, true));
     }
 
     @Transactional(readOnly = true)
@@ -71,6 +78,41 @@ public class BookCatalogService {
         }
         return bookRepo.findById(id)
                 .filter(b -> Boolean.TRUE.equals(b.getDownloaded()));
+    }
+
+    /**
+     * Find (or create on first use) the shop product backed by a library
+     * book, so the book can flow through the normal basket/checkout
+     * pipeline. Auto-created rows carry {@code bookId} (which keeps them
+     * out of the public /shop listing) and remain editable under
+     * Admin → Products.
+     */
+    @Transactional
+    public Product ensurePurchaseProduct(Book book) {
+        return productRepo.findByBookId(book.getId()).orElseGet(() -> createPurchaseProduct(book));
+    }
+
+    private Product createPurchaseProduct(Book book) {
+        Product product = new Product();
+        product.setBookId(book.getId());
+        product.setName(title(book));
+        product.setSlug("book-" + book.getId());
+        product.setDescription(clean(book.getDescription()));
+        product.setPrice(settingService.libraryEbookPrice());
+        product.setImageUrl("/api/books/" + book.getId() + "/cover");
+        // Copies are unlimited; checkout still caps e-books at 1 per order.
+        product.setStock(1_000_000);
+        product.setActive(true);
+        product.setMaxPerOrder(1);
+        product.setBookType("PDF");
+        product.setAuthor(clean(book.getAuthor()));
+        product.setPublisher(clean(book.getPublisher()));
+        product.setIsbn(clean(book.getIsbn()));
+        product.setLanguage(clean(book.getLanguage()));
+        product.setPageCount(book.getPages());
+        Integer releaseYear = year(book);
+        product.setPublishYear(releaseYear == null ? null : String.valueOf(releaseYear));
+        return productRepo.save(product);
     }
 
     /**
@@ -146,6 +188,10 @@ public class BookCatalogService {
     }
 
     private BookView toView(Book book) {
+        return toView(book, false);
+    }
+
+    private BookView toView(Book book, boolean withPrice) {
         String group = categoryGroup(book.getCategories());
         String categorySlug = group == null ? null : slugify(group);
         String cover = preferredCover(book);
@@ -172,8 +218,18 @@ public class BookCatalogService {
                 clean(book.getIsbn()),
                 book.getPages(),
                 filesize(book),
+                withPrice ? effectivePriceOf(book) : null,
                 "PDF"
         );
+    }
+
+    /** Price for the detail view: effective price of the linked product,
+     * or the configured default for books that have none yet. */
+    private long effectivePriceOf(Book book) {
+        return productRepo.findByBookId(book.getId())
+                .map(ProductService::effectivePrice)
+                .map(price -> price.longValue())
+                .orElseGet(() -> settingService.libraryEbookPrice().longValue());
     }
 
     private static String title(Book book) {
