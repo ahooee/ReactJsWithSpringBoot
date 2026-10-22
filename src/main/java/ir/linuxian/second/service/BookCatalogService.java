@@ -1,13 +1,16 @@
 package ir.linuxian.second.service;
 
 import ir.linuxian.second.dto.BookCategoryView;
+import ir.linuxian.second.dto.BookReelsView;
 import ir.linuxian.second.dto.BookView;
 import ir.linuxian.second.entities.book.Book;
 import ir.linuxian.second.entities.book.BookCategoryName;
 import ir.linuxian.second.entities.product.Product;
 import ir.linuxian.second.repos.BookCategoryNameRepo;
 import ir.linuxian.second.repos.BookRepo;
+import ir.linuxian.second.repos.OrderItemRepo;
 import ir.linuxian.second.repos.ProductRepo;
+import ir.linuxian.second.repos.ReviewRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,6 +33,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.time.LocalDate;
 
 /**
  * Read-only catalog backed exclusively by the {@code books} table.
@@ -50,15 +54,20 @@ public class BookCatalogService {
     private final ProductRepo productRepo;
     private final SettingService settingService;
     private final BookCategoryNameRepo categoryNameRepo;
+    private final ReviewRepo reviewRepo;
+    private final OrderItemRepo orderItemRepo;
     private final Path libraryRoot;
 
     public BookCatalogService(BookRepo bookRepo, ProductRepo productRepo,
                               SettingService settingService, BookCategoryNameRepo categoryNameRepo,
+                              ReviewRepo reviewRepo, OrderItemRepo orderItemRepo,
                               @Value("${app.books.library-root:../zlibrary/zlibrary/downloads}") String libraryRoot) {
         this.bookRepo = bookRepo;
         this.productRepo = productRepo;
         this.settingService = settingService;
         this.categoryNameRepo = categoryNameRepo;
+        this.reviewRepo = reviewRepo;
+        this.orderItemRepo = orderItemRepo;
         this.libraryRoot = Paths.get(libraryRoot).toAbsolutePath().normalize();
         if (!Files.isDirectory(this.libraryRoot)) {
             log.warn("Books library root does not exist: {} (set app.books.library-root or BOOKS_LIBRARY_ROOT)",
@@ -276,6 +285,139 @@ public class BookCatalogService {
         book.setCategories(value == null ? "" : value.trim());
         bookRepo.save(book);
         return toView(book, categoryNames(), priceMapFor(List.of(book)));
+    }
+
+    /**
+     * Horizontal reel strips for the catalog page (Digikala-style rows):
+     * featured (admin-curated, falling back to a daily rotation), best
+     * rated recommendations (falling back to rotation until reviews come
+     * in) and top sellers from real order lines. All views share ONE
+     * translation + price map pass over the catalog.
+     */
+    @Transactional(readOnly = true)
+    public BookReelsView findReels() {
+        List<Book> pool = bookRepo.findByDownloadedTrueOrderByTitleAsc();
+        Map<String, String> nameBySlug = categoryNames();
+        Map<UUID, Long> priceByBook = priceMapFor(pool);
+        long day = LocalDate.now().toEpochDay();
+
+        List<BookView> featured = featuredBooks(pool, nameBySlug, priceByBook);
+        List<BookView> recommended = topRatedBooks(pool, nameBySlug, priceByBook, day);
+        List<BookView> topSellers = topSellerBooks(pool, nameBySlug, priceByBook, day);
+
+        return new BookReelsView(featured, recommended, topSellers);
+    }
+
+    /** Reel size cap — Digikala-style rows show a screenful at most. */
+    private static final int REEL_LIMIT = 12;
+
+    private List<BookView> featuredBooks(List<Book> pool, Map<String, String> nameBySlug, Map<UUID, Long> priceByBook) {
+        String raw = settingService.valueOf("books.featuredIds");
+        if (raw != null && !raw.isBlank()) {
+            Map<UUID, Book> byId = new HashMap<>();
+            for (Book book : pool) {
+                if (book.getId() != null) {
+                    byId.put(book.getId(), book);
+                }
+            }
+            List<Book> picks = new ArrayList<>();
+            for (String token : raw.split("[,\\n]")) {
+                try {
+                    Book book = byId.get(UUID.fromString(token.trim()));
+                    if (book != null && !picks.contains(book)) {
+                        picks.add(book);
+                    }
+                } catch (IllegalArgumentException ignored) {
+                    // skip malformed id
+                }
+                if (picks.size() >= REEL_LIMIT) {
+                    break;
+                }
+            }
+            if (!picks.isEmpty()) {
+                return picks.stream().map(book -> toView(book, nameBySlug, priceByBook)).toList();
+            }
+        }
+        // No curation (yet): rotate through the catalog day by day.
+        return rotatedSlice(pool, day -> day).stream()
+                .map(book -> toView(book, nameBySlug, priceByBook))
+                .toList();
+    }
+
+    private List<BookView> topRatedBooks(List<Book> pool, Map<String, String> nameBySlug,
+                                         Map<UUID, Long> priceByBook, long day) {
+        Map<UUID, Book> byId = new HashMap<>();
+        for (Book book : pool) {
+            if (book.getId() != null) {
+                byId.put(book.getId(), book);
+            }
+        }
+        List<Book> picks = new ArrayList<>();
+        for (Object[] row : reviewRepo.topRatedBookIds()) {
+            Object id = row[0];
+            if (id instanceof UUID bookId && byId.containsKey(bookId)) {
+                Book book = byId.get(bookId);
+                if (!picks.contains(book)) {
+                    picks.add(book);
+                }
+            }
+            if (picks.size() >= REEL_LIMIT) {
+                break;
+            }
+        }
+        if (picks.isEmpty()) {
+            picks = rotatedSlice(pool, day2 -> day2 + 3);
+        }
+        return picks.stream()
+                .limit(REEL_LIMIT)
+                .map(book -> toView(book, nameBySlug, priceByBook))
+                .toList();
+    }
+
+    private List<BookView> topSellerBooks(List<Book> pool, Map<String, String> nameBySlug,
+                                          Map<UUID, Long> priceByBook, long day) {
+        Map<UUID, Book> byId = new HashMap<>();
+        for (Book book : pool) {
+            if (book.getId() != null) {
+                byId.put(book.getId(), book);
+            }
+        }
+        List<Book> picks = new ArrayList<>();
+        for (Object[] row : orderItemRepo.topSellingBookIds()) {
+            Object id = row[0];
+            if (id instanceof UUID bookId && byId.containsKey(bookId)) {
+                Book book = byId.get(bookId);
+                if (!picks.contains(book)) {
+                    picks.add(book);
+                }
+            }
+            if (picks.size() >= REEL_LIMIT) {
+                break;
+            }
+        }
+        if (picks.isEmpty()) {
+            picks = rotatedSlice(pool, day2 -> day2 + 11);
+        }
+        return picks.stream()
+                .limit(REEL_LIMIT)
+                .map(book -> toView(book, nameBySlug, priceByBook))
+                .toList();
+    }
+
+    /** Deterministic per-day rotating slice: keeps the strip feeling fresh
+     * when no real signal (reviews/orders/curation) exists yet. */
+    private List<Book> rotatedSlice(List<Book> pool, java.util.function.LongUnaryOperator seedFn) {
+        int n = pool.size();
+        if (n == 0) {
+            return List.of();
+        }
+        long day = LocalDate.now().toEpochDay();
+        int start = (int) Math.floorMod(seedFn.applyAsLong(day) * 37L, n);
+        List<Book> out = new ArrayList<>();
+        for (int k = 0; k < Math.min(REEL_LIMIT, n); k++) {
+            out.add(pool.get((start + k) % n));
+        }
+        return out;
     }
 
     /** Upsert a localized display name for a category slug. A blank name

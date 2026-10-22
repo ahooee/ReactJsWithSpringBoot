@@ -1,6 +1,7 @@
 package ir.linuxian.second.web;
 
 import ir.linuxian.second.dto.BookCategoryView;
+import ir.linuxian.second.dto.BookReelsView;
 import ir.linuxian.second.dto.BookView;
 import ir.linuxian.second.entities.book.Book;
 import ir.linuxian.second.service.BookCatalogService;
@@ -57,6 +58,13 @@ public class BookController {
         return service.findCategories();
     }
 
+    /** Digikala-style horizontal reels: featured / recommended / top sellers. */
+    @GetMapping("/reels")
+    public BookReelsView reels() {
+        return service.findReels();
+    }
+
+    /** One downloaded book by id. */
     @GetMapping("/{id}")
     public ResponseEntity<BookView> one(@PathVariable UUID id) {
         return service.findDownloaded(id)

@@ -38,6 +38,11 @@ public class SettingService {
                 .collect(Collectors.toMap(SiteSetting::getKey, s -> s.getValue() == null ? "" : s.getValue()));
     }
 
+    /** Raw value of one setting ({@code null} when unset). */
+    public String valueOf(String key) {
+        return repo.findById(key).map(SiteSetting::getValue).orElse(null);
+    }
+
     public List<SiteSetting> getAll() {
         return repo.findAll();
     }
