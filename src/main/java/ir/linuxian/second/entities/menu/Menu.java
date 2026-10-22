@@ -24,8 +24,18 @@ public class Menu {
 
     @Getter
     @Setter
+    @Column(nullable = true)
+    private String nameFa;
+
+    @Getter
+    @Setter
     @Column(nullable = false,unique = true)
     private String slug;
+
+    @Getter
+    @Setter
+    @Column(nullable = true)
+    private String url;
 
     @Getter
     @Setter

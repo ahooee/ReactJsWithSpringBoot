@@ -36,11 +36,11 @@ public class MenuController {
     }
 
     @PostMapping
-    public Menu createMenu(@RequestBody Menu menu){
+    public MenuResponse createMenu(@RequestBody Menu menu){
         return menuService.addMenu(menu);
     }
     @PutMapping("/{menuId}")
-    public Menu updateMenu(@PathVariable Long menuId, @RequestBody Menu menu) {
+    public MenuResponse updateMenu(@PathVariable Long menuId, @RequestBody Menu menu) {
 
        return menuService.updateMenu(menuId, menu);
     }

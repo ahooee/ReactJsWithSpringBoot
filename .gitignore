@@ -35,3 +35,13 @@ out/
 
 ### VS Code ###
 .vscode/
+
+# Embedded TDchatBot runtime session (TDLib auth data, changes on every run).
+# The code + binaries (src/.../ir/linuxian, libs/, native/) ARE committed.
+tdlib-data/
+
+# Contact-encryption secret (auto-generated on first boot when no
+# APP_CRYPTO_KEY env var is set). NEVER commit: losing it is fine
+# (a new one is generated), but LEAKING it exposes stored emails/phones.
+# Back it up alongside database backups instead.
+.app-crypto-key

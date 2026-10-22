@@ -4,29 +4,45 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.Instant;
+
 @Entity
-@Table(name="pages")
+@Table(name = "pages")
 public class Page {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Getter
     private Long id;
-    @Getter
-    @Setter
+
+    @Getter @Setter
     @Column(nullable = false)
     private String title;
-    @Getter
-    @Setter
+
+    @Getter @Setter
     @Column(nullable = false, unique = true)
     private String slug;
-    @Getter
-    @Setter
+
+    @Getter @Setter
     @Column(columnDefinition = "TEXT")
     private String content;
 
-    public Page(){
+    @Getter @Setter
+    @Column(nullable = false)
+    private String status = "PUBLISHED";
 
+    @Getter
+    @Column(nullable = false, updatable = false)
+    private Instant createdAt = Instant.now();
+
+    @Getter @Setter
+    private Instant updatedAt = Instant.now();
+
+    public Page() {
     }
 
+    @PreUpdate
+    public void onUpdate() {
+        updatedAt = Instant.now();
+    }
 }

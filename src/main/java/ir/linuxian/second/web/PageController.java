@@ -1,16 +1,13 @@
-
 package ir.linuxian.second.web;
 
 import ir.linuxian.second.entities.page.Page;
 import ir.linuxian.second.service.PageService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -21,6 +18,11 @@ public class PageController {
 
     public PageController(PageService pageService) {
         this.pageService = pageService;
+    }
+
+    @GetMapping
+    public List<Page> listAll() {
+        return pageService.findAll();
     }
 
     @GetMapping("/{*slug}")
@@ -52,5 +54,29 @@ public class PageController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(response);
         }
+    }
+
+    @PostMapping
+    public ResponseEntity<?> create(@RequestBody Page page) {
+        try {
+            return ResponseEntity.status(HttpStatus.CREATED).body(pageService.create(page));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<?> update(@PathVariable Long id, @RequestBody Page page) {
+        try {
+            return ResponseEntity.ok(pageService.update(id, page));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> delete(@PathVariable Long id) {
+        pageService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }

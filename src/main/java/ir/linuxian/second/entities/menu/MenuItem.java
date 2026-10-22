@@ -23,6 +23,11 @@ public class MenuItem {
 
     @Getter
     @Setter
+    @Column(nullable = true)
+    private String titleFa;
+
+    @Getter
+    @Setter
     @Column(nullable = false)
     private String url;
 
@@ -37,6 +42,8 @@ public class MenuItem {
     @JoinColumn(name = "menu_id", nullable = false)
     private Menu menu;
 
+    /** Optional parent for nested dropdowns (e.g. Shop > Books > E-books). Null = top level.
+     *  Product-page items can never be parents (enforced in MenuItemService). */
     @Getter
     @Setter
     @ManyToOne(fetch = FetchType.LAZY)
@@ -46,7 +53,7 @@ public class MenuItem {
     @Getter
     @Setter
     @OneToMany(mappedBy = "parent")
-    @OrderBy("sortOrder ASC ")
+    @OrderBy("sortOrder ASC")
     private List<MenuItem> children = new ArrayList<>();
 
     public MenuItem() {}
