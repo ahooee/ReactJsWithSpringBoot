@@ -3,6 +3,7 @@ package ir.linuxian.second.repos;
 import ir.linuxian.second.entities.product.Product;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,4 +16,7 @@ public interface ProductRepo extends JpaRepository<Product, Long> {
     List<Product> findByCategoryId(Long categoryId);
     boolean existsBySlug(String slug);
     Optional<Product> findByBookId(UUID bookId);
+
+    /** Batch variant for the catalog list (one query per page, not per row). */
+    List<Product> findByBookIdIn(Collection<UUID> bookIds);
 }

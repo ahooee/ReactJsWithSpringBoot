@@ -73,6 +73,10 @@ public class TelegramService implements AutoCloseable {
         return t;
     });
 
+    /** Optional callback for auth-step errors (bad code, wrong password…),
+     * so an embedding app can surface them in its own login UI. */
+    private volatile Consumer<String> authErrorListener;
+
     public TelegramService(int apiId, String apiHash, LoginPrompt prompt) {
         this.apiId = apiId;
         this.apiHash = apiHash;
@@ -82,6 +86,11 @@ public class TelegramService implements AutoCloseable {
     public TelegramService(int apiId, String apiHash, LoginPrompt prompt, String databaseDirectory) {
         this(apiId, apiHash, prompt);
         setDatabaseDirectory(databaseDirectory);
+    }
+
+    /** Optional callback for auth-step errors (bad code, wrong password…). */
+    public void setAuthErrorListener(Consumer<String> authErrorListener) {
+        this.authErrorListener = authErrorListener;
     }
 
     public String getDatabaseDirectory() {
@@ -204,6 +213,10 @@ public class TelegramService implements AutoCloseable {
         client.send(request, result -> {
             if (result instanceof TdApi.Error err) {
                 System.err.println("Error: " + err.message);
+                Consumer<String> listener = authErrorListener;
+                if (listener != null) {
+                    listener.accept(err.message);
+                }
                 handleAuthState(state);
             }
         });

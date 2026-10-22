@@ -50,6 +50,71 @@ public class BotAdminController {
         return service.restart();
     }
 
+    // ---------- telegram account login / logout (Admin → Settings) ----------
+
+    @GetMapping("/login/status")
+    public Map<String, Object> loginStatus() {
+        return service.loginStatus();
+    }
+
+    public record LoginPhoneRequest(String phone) {
+    }
+
+    @PostMapping("/login/start")
+    public ResponseEntity<?> loginStart(@RequestBody LoginPhoneRequest body) {
+        try {
+            return ResponseEntity.ok(service.loginStart(body == null ? null : body.phone()));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return bad(e.getMessage());
+        } catch (Exception e) {
+            return bad("Login start failed: " + e.getMessage());
+        }
+    }
+
+    public record LoginCodeRequest(String code) {
+    }
+
+    @PostMapping("/login/code")
+    public ResponseEntity<?> loginCode(@RequestBody LoginCodeRequest body) {
+        try {
+            return ResponseEntity.ok(service.loginCode(body == null ? null : body.code()));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return bad(e.getMessage());
+        } catch (Exception e) {
+            return bad("Code check failed: " + e.getMessage());
+        }
+    }
+
+    public record LoginPasswordRequest(String password) {
+    }
+
+    @PostMapping("/login/password")
+    public ResponseEntity<?> loginPassword(@RequestBody LoginPasswordRequest body) {
+        try {
+            return ResponseEntity.ok(service.loginPassword(body == null ? null : body.password()));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return bad(e.getMessage());
+        } catch (Exception e) {
+            return bad("Password check failed: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/login/cancel")
+    public Map<String, Object> loginCancel() {
+        return service.loginCancel();
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout() {
+        try {
+            return ResponseEntity.ok(service.logout());
+        } catch (IllegalStateException e) {
+            return bad(e.getMessage());
+        } catch (Exception e) {
+            return bad("Logout failed: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/allowlist")
     public java.util.List<Map<String, Object>> allowlist() {
         return service.allowedChats();

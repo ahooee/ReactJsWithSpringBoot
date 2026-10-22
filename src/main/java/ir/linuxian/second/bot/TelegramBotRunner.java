@@ -1,9 +1,9 @@
 package ir.linuxian.second.bot;
 
 import ir.linuxian.ai.OpenAiResponder;
-import ir.linuxian.app.ConsolePrompt;
 import ir.linuxian.listener.AutoResponder;
 import ir.linuxian.listener.IncomingMessagePrinter;
+import ir.linuxian.telegram.LoginPrompt;
 import ir.linuxian.telegram.MessageReader;
 import ir.linuxian.telegram.MessageSender;
 import ir.linuxian.telegram.SendTracker;
@@ -22,9 +22,11 @@ import java.io.File;
  *
  * <p>Headless equivalent of TDchatBot's {@code Main}: no interactive
  * {@code ChatApp} menu loop. Incoming messages are still printed and (when an
- * AI key is configured) auto-answered. Login prompts (phone/code/2FA) go to
- * the console, same as standalone; when the shared {@code tdlib-data} session
- * is reused no prompt appears.</p>
+ * AI key is configured) auto-answered. Login prompts (phone/code/2FA) do not
+ * go to the console: {@link AdminLoginPrompt} records the needed step and
+ * blocks until the admin submits it via Admin → Settings (the Telegram
+ * login wizard). When the shared {@code tdlib-data} session is reused no
+ * step is needed and login completes immediately.</p>
  *
  * <p>Connection/AI settings come from {@link BotSettingStore} (admin dashboard
  * values persisted in the DB, falling back to {@code application.properties}).
@@ -38,6 +40,7 @@ public class TelegramBotRunner implements SmartLifecycle {
 
     private final TelegramBotProperties props;
     private final BotSettingStore store;
+    private final AdminLoginPrompt loginPrompt;
 
     private volatile boolean running = false;
     private volatile boolean loggedIn = false;
@@ -54,9 +57,10 @@ public class TelegramBotRunner implements SmartLifecycle {
     private volatile String currentDbDir = "";
     private volatile boolean currentVerbose;
 
-    public TelegramBotRunner(TelegramBotProperties props, BotSettingStore store) {
+    public TelegramBotRunner(TelegramBotProperties props, BotSettingStore store, AdminLoginPrompt loginPrompt) {
         this.props = props;
         this.store = store;
+        this.loginPrompt = loginPrompt;
     }
 
     @Override
@@ -78,6 +82,9 @@ public class TelegramBotRunner implements SmartLifecycle {
 
     private void runBot() {
         try {
+            // A fresh client takes over: reset any stale login step from
+            // the previous one (a queued phone stays queued).
+            loginPrompt.retire();
             BotSettingStore.EffectiveSettings eff = store.effective(props);
             String dbDir = resolveDatabaseDirectory(eff.databaseDirectory());
             currentApiId = eff.apiId();
@@ -86,9 +93,12 @@ public class TelegramBotRunner implements SmartLifecycle {
             currentVerbose = eff.verbose();
             log.info("Telegram bot starting (apiId={}, dbDir={}).", eff.apiId(), dbDir);
 
-            ConsolePrompt prompt = new ConsolePrompt();
+            // TDLib asks for phone/code/2FA through the admin login wizard
+            // (Admin → Settings) instead of the console.
+            LoginPrompt prompt = loginPrompt;
             TelegramService service = new TelegramService(eff.apiId(), eff.apiHash(), prompt);
             service.setDatabaseDirectory(dbDir);
+            service.setAuthErrorListener(loginPrompt::reportAuthError);
 
             MessageReader messageReader = new MessageReader(service);
             SendTracker sendTracker = new SendTracker(service, messageReader, eff.verbose());
@@ -282,6 +292,11 @@ public class TelegramBotRunner implements SmartLifecycle {
     @Override
     public int getPhase() {
         return Integer.MAX_VALUE - 100;
+    }
+
+    /** Admin-driven login steps shared with the Settings page wizard. */
+    public AdminLoginPrompt getLoginPrompt() {
+        return loginPrompt;
     }
 
     /** Live client once started; null before start or after failure. */

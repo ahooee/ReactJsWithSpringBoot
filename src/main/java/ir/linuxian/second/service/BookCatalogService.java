@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -65,18 +66,22 @@ public class BookCatalogService {
         }
     }
 
-    /** All downloaded books, ordered by title. Translations are fetched once
-     * for the whole list so the cards can show localized category names. */
+    /** All downloaded books, ordered by title. Translations and prices are
+     * fetched once for the whole list so the cards show both without N+1. */
     @Transactional(readOnly = true)
     public List<BookView> findDownloaded() {
-        return bookRepo.findByDownloadedTrueOrderByTitleAsc().stream()
-                .map(book -> toView(book, false, categoryNames()))
+        List<Book> rows = bookRepo.findByDownloadedTrueOrderByTitleAsc();
+        Map<String, String> nameBySlug = categoryNames();
+        Map<UUID, Long> priceByBook = priceMapFor(rows);
+        return rows.stream()
+                .map(book -> toView(book, nameBySlug, priceByBook))
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public Optional<BookView> findDownloaded(UUID id) {
-        return findDownloadedBook(id).map(book -> toView(book, true, categoryNames()));
+        return findDownloadedBook(id)
+                .map(book -> toView(book, categoryNames(), priceMapFor(List.of(book))));
     }
 
     @Transactional(readOnly = true)
@@ -199,11 +204,7 @@ public class BookCatalogService {
         return candidate;
     }
 
-    private BookView toView(Book book) {
-        return toView(book, false, categoryNames());
-    }
-
-    private BookView toView(Book book, boolean withPrice, Map<String, String> nameBySlug) {
+    private BookView toView(Book book, Map<String, String> nameBySlug, Map<UUID, Long> priceByBook) {
         String group = categoryGroup(book.getCategories());
         String categorySlug = group == null ? null : slugify(group);
         String cover = preferredCover(book);
@@ -232,7 +233,7 @@ public class BookCatalogService {
                 clean(book.getIsbn()),
                 book.getPages(),
                 filesize(book),
-                withPrice ? effectivePriceOf(book) : null,
+                book.getId() == null ? null : priceByBook.get(book.getId()),
                 "PDF"
         );
     }
@@ -262,7 +263,7 @@ public class BookCatalogService {
         } else {
             rows = bookRepo.findByDownloadedTrueOrderByTitleAsc(limit);
         }
-        return rows.stream().map(book -> toView(book, true, categoryNames())).toList();
+        return rows.stream().map(book -> toView(book, categoryNames(), priceMapFor(rows))).toList();
     }
 
     /** Admin fix: rewrite a book's raw categories value
@@ -274,7 +275,7 @@ public class BookCatalogService {
                 .orElseThrow(() -> new RuntimeException("Book not found: " + id));
         book.setCategories(value == null ? "" : value.trim());
         bookRepo.save(book);
-        return toView(book, true, categoryNames());
+        return toView(book, categoryNames(), priceMapFor(List.of(book)));
     }
 
     /** Upsert a localized display name for a category slug. A blank name
@@ -301,13 +302,29 @@ public class BookCatalogService {
         }
     }
 
-    /** Price for the detail view: effective price of the linked product,
-     * or the configured default for books that have none yet. */
-    private long effectivePriceOf(Book book) {
-        return productRepo.findByBookId(book.getId())
-                .map(ProductService::effectivePrice)
-                .map(price -> price.longValue())
-                .orElseGet(() -> settingService.libraryEbookPrice().longValue());
+    /**
+     * Effective price per book for a whole window of catalog rows — one
+     * product query plus one settings read for the entire list, so cards
+     * can show prices without N+1. Books without a linked product get the
+     * configured default.
+     */
+    private Map<UUID, Long> priceMapFor(List<Book> books) {
+        long defaultPrice = settingService.libraryEbookPrice().longValue();
+        Map<UUID, Long> map = new HashMap<>();
+        for (Book book : books) {
+            if (book.getId() != null) {
+                map.put(book.getId(), defaultPrice);
+            }
+        }
+        List<UUID> ids = books.stream().map(Book::getId).filter(Objects::nonNull).toList();
+        if (!ids.isEmpty()) {
+            for (Product product : productRepo.findByBookIdIn(ids)) {
+                if (product.getBookId() != null) {
+                    map.put(product.getBookId(), ProductService.effectivePrice(product).longValue());
+                }
+            }
+        }
+        return map;
     }
 
     private static String title(Book book) {

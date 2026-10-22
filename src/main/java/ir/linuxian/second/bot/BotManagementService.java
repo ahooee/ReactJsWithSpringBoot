@@ -123,6 +123,97 @@ public class BotManagementService {
         return status();
     }
 
+    // ---------- telegram account login (Settings page wizard) ----------
+
+    /** What the admin login wizard needs right now: the pending TDLib
+     * step (phone/code/2FA), any error from the last attempt, and session
+     * flags. */
+    public Map<String, Object> loginStatus() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.putAll(runner.getLoginPrompt().status());
+        m.put("running", runner.isRunning());
+        m.put("loggedIn", runner.isLoggedIn());
+        m.put("enabled", store.effective(props).enabled());
+        return m;
+    }
+
+    /**
+     * Starts (or continues) a login with the account's phone number. If no
+     * client is live yet (bot disabled or thread died) a fresh one is
+     * started; TDLib then sends the code and the wizard moves on to the
+     * code step.
+     */
+    public Map<String, Object> loginStart(String phone) {
+        if (phone == null || phone.isBlank()) {
+            throw new IllegalArgumentException("Phone number is required (international format, e.g. +98912…).");
+        }
+        if (!store.effective(props).enabled()) {
+            throw new IllegalStateException(
+                    "Telegram is disabled — enable it in Bot Manager (connection settings) first.");
+        }
+        AdminLoginPrompt prompt = runner.getLoginPrompt();
+        AdminLoginPrompt.Phase phase = prompt.currentPhase();
+        if (phase == AdminLoginPrompt.Phase.NEEDS_CODE) {
+            throw new IllegalStateException("A login is already waiting for the verification code.");
+        }
+        if (phase == AdminLoginPrompt.Phase.NEEDS_PASSWORD) {
+            throw new IllegalStateException("A login is already waiting for the 2FA password.");
+        }
+        if (!runner.isRunning()) {
+            prompt.cancel();     // drop a stale pending step before a new client
+            runner.restart();
+        }
+        // Queued for the live (or fresh) client; consumed at WaitPhoneNumber.
+        prompt.submitPhone(phone.trim());
+        return loginStatus();
+    }
+
+    public Map<String, Object> loginCode(String code) {
+        if (code == null || code.isBlank()) {
+            throw new IllegalArgumentException("Verification code is required.");
+        }
+        runner.getLoginPrompt().submitCode(code.trim());
+        return loginStatus();
+    }
+
+    public Map<String, Object> loginPassword(String password) {
+        if (password == null || password.isBlank()) {
+            throw new IllegalArgumentException("2FA password is required.");
+        }
+        runner.getLoginPrompt().submitPassword(password.trim());
+        return loginStatus();
+    }
+
+    /** Aborts a pending login: cancels the step and reopens the session
+     * fresh, so the wizard starts over cleanly. */
+    public Map<String, Object> loginCancel() {
+        runner.getLoginPrompt().cancel();
+        if (runner.isRunning()) {
+            runner.restart();
+        }
+        return loginStatus();
+    }
+
+    /**
+     * Logs the Telegram account out of the shared tdlib session and closes
+     * the client; on next login TDLib asks for phone/code again.
+     */
+    public Map<String, Object> logout() {
+        TelegramService telegram = runner.getTelegram();
+        if (telegram != null && runner.isLoggedIn()) {
+            try {
+                telegram.call(new TdApi.LogOut());
+            } catch (TelegramException e) {
+                throw new IllegalStateException("Telegram logout failed: " + e.getMessage());
+            }
+        }
+        runner.getLoginPrompt().cancel();
+        if (runner.isRunning()) {
+            runner.restart();
+        }
+        return loginStatus();
+    }
+
     // ---------- allow-list ----------
 
     public List<Map<String, Object>> allowedChats() {
