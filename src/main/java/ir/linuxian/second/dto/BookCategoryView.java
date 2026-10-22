@@ -4,6 +4,8 @@ package ir.linuxian.second.dto;
 public record BookCategoryView(
         String slug,
         String name,
+        /** Admin-managed translation (e.g. Persian); null → UI falls back to {@code name}. */
+        String nameFa,
         long count
 ) {
 }

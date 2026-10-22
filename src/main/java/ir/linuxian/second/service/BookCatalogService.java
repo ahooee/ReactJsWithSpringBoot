@@ -3,12 +3,16 @@ package ir.linuxian.second.service;
 import ir.linuxian.second.dto.BookCategoryView;
 import ir.linuxian.second.dto.BookView;
 import ir.linuxian.second.entities.book.Book;
+import ir.linuxian.second.entities.book.BookCategoryName;
 import ir.linuxian.second.entities.product.Product;
+import ir.linuxian.second.repos.BookCategoryNameRepo;
 import ir.linuxian.second.repos.BookRepo;
 import ir.linuxian.second.repos.ProductRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -43,14 +48,16 @@ public class BookCatalogService {
     private final BookRepo bookRepo;
     private final ProductRepo productRepo;
     private final SettingService settingService;
+    private final BookCategoryNameRepo categoryNameRepo;
     private final Path libraryRoot;
 
     public BookCatalogService(BookRepo bookRepo, ProductRepo productRepo,
-                              SettingService settingService,
+                              SettingService settingService, BookCategoryNameRepo categoryNameRepo,
                               @Value("${app.books.library-root:../zlibrary/zlibrary/downloads}") String libraryRoot) {
         this.bookRepo = bookRepo;
         this.productRepo = productRepo;
         this.settingService = settingService;
+        this.categoryNameRepo = categoryNameRepo;
         this.libraryRoot = Paths.get(libraryRoot).toAbsolutePath().normalize();
         if (!Files.isDirectory(this.libraryRoot)) {
             log.warn("Books library root does not exist: {} (set app.books.library-root or BOOKS_LIBRARY_ROOT)",
@@ -58,17 +65,18 @@ public class BookCatalogService {
         }
     }
 
-    /** All downloaded books, ordered by title. */
+    /** All downloaded books, ordered by title. Translations are fetched once
+     * for the whole list so the cards can show localized category names. */
     @Transactional(readOnly = true)
     public List<BookView> findDownloaded() {
         return bookRepo.findByDownloadedTrueOrderByTitleAsc().stream()
-                .map(book -> toView(book, false))
+                .map(book -> toView(book, false, categoryNames()))
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public Optional<BookView> findDownloaded(UUID id) {
-        return findDownloadedBook(id).map(book -> toView(book, true));
+        return findDownloadedBook(id).map(book -> toView(book, true, categoryNames()));
     }
 
     @Transactional(readOnly = true)
@@ -123,6 +131,7 @@ public class BookCatalogService {
      */
     @Transactional(readOnly = true)
     public List<BookCategoryView> findCategories() {
+        Map<String, String> nameBySlug = categoryNames();
         Map<String, Long> counts = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (Book book : bookRepo.findByDownloadedTrueOrderByTitleAsc()) {
             String group = categoryGroup(book.getCategories());
@@ -131,7 +140,10 @@ public class BookCatalogService {
             }
         }
         List<BookCategoryView> out = new ArrayList<>(counts.size());
-        counts.forEach((name, count) -> out.add(new BookCategoryView(slugify(name), name, count)));
+        counts.forEach((name, count) -> {
+            String slug = slugify(name);
+            out.add(new BookCategoryView(slug, name, nameBySlug.get(slug), count));
+        });
         return out;
     }
 
@@ -188,10 +200,10 @@ public class BookCatalogService {
     }
 
     private BookView toView(Book book) {
-        return toView(book, false);
+        return toView(book, false, categoryNames());
     }
 
-    private BookView toView(Book book, boolean withPrice) {
+    private BookView toView(Book book, boolean withPrice, Map<String, String> nameBySlug) {
         String group = categoryGroup(book.getCategories());
         String categorySlug = group == null ? null : slugify(group);
         String cover = preferredCover(book);
@@ -201,6 +213,7 @@ public class BookCatalogService {
                     ? cover
                     : "/api/books/" + book.getId() + "/cover";
         }
+        String categoryNameFa = categorySlug == null ? null : nameBySlug.get(categorySlug);
 
         return new BookView(
                 book.getId() == null ? null : book.getId().toString(),
@@ -210,6 +223,7 @@ public class BookCatalogService {
                 clean(book.getCategories()),
                 group,
                 categorySlug,
+                categoryNameFa,
                 coverUrl,
                 clean(book.getFormat()),
                 clean(book.getLanguage()),
@@ -221,6 +235,70 @@ public class BookCatalogService {
                 withPrice ? effectivePriceOf(book) : null,
                 "PDF"
         );
+    }
+
+    /** Localized names (Persian) per category slug, blank rows ignored
+     * (missing slugs fall back to the library's English name). */
+    private Map<String, String> categoryNames() {
+        Map<String, String> map = new HashMap<>();
+        for (BookCategoryName row : categoryNameRepo.findAll()) {
+            if (notBlank(row.getNameFa())) {
+                map.put(row.getSlug(), row.getNameFa().trim());
+            }
+        }
+        return map;
+    }
+
+    /** Admin category fixer: a manageable window of downloaded books —
+     * uncategorized only, or keyword matches in title/author/categories. */
+    @Transactional(readOnly = true)
+    public List<BookView> findAdminBooks(String query, boolean uncategorized) {
+        Pageable limit = PageRequest.of(0, 60);
+        List<Book> rows;
+        if (uncategorized) {
+            rows = bookRepo.findDownloadedUncategorized(limit);
+        } else if (notBlank(query)) {
+            rows = bookRepo.searchDownloaded(query.trim(), limit);
+        } else {
+            rows = bookRepo.findByDownloadedTrueOrderByTitleAsc(limit);
+        }
+        return rows.stream().map(book -> toView(book, true, categoryNames())).toList();
+    }
+
+    /** Admin fix: rewrite a book's raw categories value
+     * ("Group - Leaf", e.g. "Fiction - Classics"; blank = uncategorized).
+     * Slugs and counts re-derive from the library automatically. */
+    @Transactional
+    public BookView updateBookCategories(UUID id, String value) {
+        Book book = bookRepo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Book not found: " + id));
+        book.setCategories(value == null ? "" : value.trim());
+        bookRepo.save(book);
+        return toView(book, true, categoryNames());
+    }
+
+    /** Upsert a localized display name for a category slug. A blank name
+     * removes the translation (fallback to the library's English name). */
+    @Transactional
+    public void saveCategoryName(String slug, String nameFa) {
+        if (!notBlank(slug)) {
+            throw new RuntimeException("Category slug is required");
+        }
+        String cleaned = nameFa == null ? "" : nameFa.trim();
+        if (cleaned.isEmpty()) {
+            deleteCategoryName(slug);
+            return;
+        }
+        BookCategoryName row = categoryNameRepo.findById(slug).orElse(new BookCategoryName(slug));
+        row.setNameFa(cleaned);
+        categoryNameRepo.save(row);
+    }
+
+    @Transactional
+    public void deleteCategoryName(String slug) {
+        if (notBlank(slug)) {
+            categoryNameRepo.findById(slug).ifPresent(categoryNameRepo::delete);
+        }
     }
 
     /** Price for the detail view: effective price of the linked product,

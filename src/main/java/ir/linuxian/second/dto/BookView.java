@@ -15,6 +15,9 @@ public record BookView(
         /** Broad category derived from books.categories (e.g. "Fiction"). */
         String category,
         String categorySlug,
+        /** Admin-provided display name (e.g. Persian) for the category;
+         * null → the UI falls back to {@code category}. */
+        String categoryNameFa,
         String coverUrl,
         String format,
         String language,
