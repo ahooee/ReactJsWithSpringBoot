@@ -31,10 +31,6 @@ public class Page {
     @Column(nullable = false)
     private String status = "PUBLISHED";
 
-    @Getter @Setter
-    @Column(name = "theme", length = 64)
-    private String theme = "default";
-
     @Getter
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();

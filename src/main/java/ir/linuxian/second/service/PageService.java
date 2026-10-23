@@ -41,7 +41,6 @@ public class PageService {
                 .orElseThrow(() -> new RuntimeException("Page not found: " + id));
         existing.setTitle(incoming.getTitle());
         existing.setContent(incoming.getContent());
-        existing.setTheme(incoming.getTheme());
         if (incoming.getStatus() != null) {
             existing.setStatus(incoming.getStatus());
         }
